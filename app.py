@@ -39,34 +39,80 @@ def cleanup_old_files():
                 except:
                     pass
 
-def convert_pdf_to_docx(pdf_path, output_path, job_id):
-    """Convert PDF to DOCX with error handling"""
+def convert_pdf_to_docx(pdf_path, output_path, job_id, output_filename):
+    """Convert PDF to DOCX with error handling and detailed progress"""
     try:
-        conversion_status[job_id] = {'status': 'processing', 'progress': 0}
+        conversion_status[job_id] = {
+            'status': 'processing', 
+            'progress': 0,
+            'message': 'Initializing conversion...',
+            'output_filename': output_filename
+        }
         
-        # Check if PDF is valid
+        # Check if PDF is valid and get page count
         try:
+            conversion_status[job_id].update({
+                'progress': 10,
+                'message': 'Validating PDF file...'
+            })
+            
             doc = fitz.open(pdf_path)
             page_count = len(doc)
             doc.close()
+            
+            conversion_status[job_id].update({
+                'progress': 20,
+                'message': f'PDF validated successfully. Found {page_count} pages.'
+            })
+            
         except Exception as e:
-            conversion_status[job_id] = {'status': 'error', 'error': 'Invalid PDF file'}
+            conversion_status[job_id] = {
+                'status': 'error', 
+                'error': 'Invalid PDF file or file is corrupted'
+            }
             return
         
-        conversion_status[job_id] = {'status': 'processing', 'progress': 25}
+        # Initialize converter
+        conversion_status[job_id].update({
+            'progress': 30,
+            'message': 'Initializing PDF converter...'
+        })
+        
+        cv = pdf2docx.Converter(pdf_path)
+        
+        conversion_status[job_id].update({
+            'progress': 40,
+            'message': 'Analyzing PDF structure and extracting content...'
+        })
         
         # Convert PDF to DOCX
-        cv = pdf2docx.Converter(pdf_path)
-        conversion_status[job_id] = {'status': 'processing', 'progress': 50}
+        conversion_status[job_id].update({
+            'progress': 60,
+            'message': 'Converting PDF to Word format...'
+        })
         
         cv.convert(output_path, start=0, end=None)
-        conversion_status[job_id] = {'status': 'processing', 'progress': 75}
+        
+        conversion_status[job_id].update({
+            'progress': 85,
+            'message': 'Finalizing Word document...'
+        })
         
         cv.close()
-        conversion_status[job_id] = {'status': 'completed', 'progress': 100}
+        
+        # Final completion
+        conversion_status[job_id] = {
+            'status': 'completed', 
+            'progress': 100,
+            'message': 'Conversion completed successfully!',
+            'output_filename': output_filename
+        }
         
     except Exception as e:
-        conversion_status[job_id] = {'status': 'error', 'error': str(e)}
+        conversion_status[job_id] = {
+            'status': 'error', 
+            'error': f'Conversion failed: {str(e)}'
+        }
 
 @app.route('/')
 def index():
@@ -96,20 +142,22 @@ def upload_file():
         pdf_path = os.path.join(UPLOAD_FOLDER, unique_filename)
         file.save(pdf_path)
         
-        # Prepare output path
-        output_filename = f"{job_id}.docx"
-        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+        # Prepare output path with original filename (without extension) + pdf_ prefix
+        original_name = filename.rsplit('.', 1)[0]  # Remove .pdf extension
+        output_filename = f"pdf_{original_name}.docx"
+        output_path = os.path.join(OUTPUT_FOLDER, f"{job_id}.docx")  # Internal storage
         
         # Start conversion in background
         conversion_thread = threading.Thread(
             target=convert_pdf_to_docx,
-            args=(pdf_path, output_path, job_id)
+            args=(pdf_path, output_path, job_id, output_filename)
         )
         conversion_thread.start()
         
         return jsonify({
             'job_id': job_id,
             'original_filename': filename,
+            'output_filename': output_filename,
             'message': 'File uploaded successfully. Conversion started.'
         })
         
@@ -143,10 +191,13 @@ def download_file(job_id):
         return jsonify({'error': 'File not found'}), 404
     
     try:
+        # Get the original filename with pdf_ prefix
+        output_filename = conversion_status[job_id].get('output_filename', 'pdf_converted_document.docx')
+        
         return send_file(
             output_path,
             as_attachment=True,
-            download_name='converted_document.docx',
+            download_name=output_filename,
             mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
     except Exception as e:

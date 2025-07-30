@@ -187,12 +187,18 @@
                                         <strong>Conversion Complete!</strong>
                                         <p class="mb-0">Your PDF has been successfully converted to Word format.</p>
                                     </div>
-                                    <button class="btn btn-success btn-lg" id="downloadBtn">
-                                        <i class="fas fa-download"></i> Download Word Document
-                                    </button>
-                                    <button class="btn btn-outline-secondary btn-reset" id="resetBtn">
-                                        <i class="fas fa-redo"></i> Convert Another File
-                                    </button>
+                                    <div class="mb-3">
+                                        <button class="btn btn-success btn-lg me-2" id="downloadBtn">
+                                            <i class="fas fa-download"></i> Download Word Document
+                                        </button>
+                                        <button class="btn btn-primary btn-lg" id="convertAnotherBtn">
+                                            <i class="fas fa-plus"></i> Convert Another File
+                                        </button>
+                                    </div>
+                                    <small class="text-muted">
+                                        <i class="fas fa-info-circle"></i>
+                                        You can download and convert another file simultaneously
+                                    </small>
                                 </div>
                             </div>
 
@@ -278,8 +284,8 @@
             const downloadBtn = document.getElementById("downloadBtn");
             const errorMessage = document.getElementById("errorMessage");
             const errorText = document.getElementById("errorText");
-            const resetBtn = document.getElementById("resetBtn");
             const errorResetBtn = document.getElementById("errorResetBtn");
+            const convertAnotherBtn = document.getElementById("convertAnotherBtn");
 
             // File size formatter
             function formatFileSize(bytes) {
@@ -398,13 +404,18 @@
                             progressBar.style.width = `${progress}%`;
                             progressText.textContent = `${progress}%`;
 
+                            // Display detailed message if available
+                            if (data.message) {
+                                statusMessage.textContent = data.message;
+                            }
+
                             switch (data.status) {
                                 case "processing":
-                                    statusMessage.textContent = getStatusMessage(progress);
+                                    // Keep updating progress
                                     break;
                                 case "completed":
                                     clearInterval(statusCheckInterval);
-                                    showDownloadSection(data.download_url);
+                                    showDownloadSection(data.download_url, data.output_filename);
                                     break;
                                 case "error":
                                     throw new Error(data.error || "Conversion failed");
@@ -418,33 +429,45 @@
                 }, 1000);
             }
 
-            function getStatusMessage(progress) {
-                if (progress < 25) return "Analyzing PDF structure...";
-                if (progress < 50) return "Extracting content...";
-                if (progress < 75) return "Converting to Word format...";
-                if (progress < 100) return "Finalizing document...";
-                return "Conversion complete!";
-            }
-
-            function showDownloadSection(downloadUrl) {
+            function showDownloadSection(downloadUrl, outputFilename) {
                 progressContainer.style.display = "none";
                 downloadSection.style.display = "block";
+
+                // Update the success message to show the output filename
+                const successAlert = downloadSection.querySelector(".alert-success p");
+                if (outputFilename) {
+                    successAlert.textContent = `Your PDF has been successfully converted to: ${outputFilename}`;
+                } else {
+                    successAlert.textContent = "Your PDF has been successfully converted to Word format.";
+                }
 
                 downloadBtn.onclick = () => {
                     window.location.href = downloadUrl;
                 };
-            }
 
-            function showError(message) {
-                errorText.textContent = message;
-                errorMessage.style.display = "block";
-                if (statusCheckInterval) {
-                    clearInterval(statusCheckInterval);
+                // Setup Convert Another File button after it's displayed
+                const convertAnotherBtn = document.getElementById("convertAnotherBtn");
+                if (convertAnotherBtn) {
+                    convertAnotherBtn.onclick = showUploadArea;
                 }
             }
 
-            function hideError() {
-                errorMessage.style.display = "none";
+            function showUploadArea() {
+                // Show upload area while keeping download section visible
+                uploadSection.style.display = "block";
+                progressContainer.style.display = "none";
+                hideError();
+
+                // Reset file input for new upload
+                fileInfo.style.display = "none";
+                convertBtn.disabled = true;
+                fileInput.value = "";
+
+                // Clear any existing intervals
+                if (statusCheckInterval) {
+                    clearInterval(statusCheckInterval);
+                    statusCheckInterval = null;
+                }
             }
 
             function resetToInitialState() {
@@ -464,9 +487,23 @@
                 }
             }
 
-            // Reset button handlers
-            resetBtn.addEventListener("click", resetToInitialState);
+            function showError(message) {
+                errorText.textContent = message;
+                errorMessage.style.display = "block";
+                if (statusCheckInterval) {
+                    clearInterval(statusCheckInterval);
+                }
+            }
+
+            function hideError() {
+                errorMessage.style.display = "none";
+            }
+
+            // Event listeners
             errorResetBtn.addEventListener("click", resetToInitialState);
+
+            // Convert button click
+            convertBtn.addEventListener("click", uploadAndConvert);
         </script>
     </body>
 </html>
