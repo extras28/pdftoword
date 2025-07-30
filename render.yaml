@@ -4,10 +4,9 @@ services:
       env: python
       buildCommand: pip install --upgrade pip && pip install -r requirements.txt
       startCommand: gunicorn --bind 0.0.0.0:$PORT app:app
+      pythonVersion: "3.11.8"
       envVars:
           - key: FLASK_ENV
             value: production
           - key: SECRET_KEY
             value: pdf-converter-secret-key-2025
-          - key: PYTHON_VERSION
-            value: 3.11.8
