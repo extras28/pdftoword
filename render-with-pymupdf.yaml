@@ -2,7 +2,7 @@ services:
     - type: web
       name: pdf-to-word-converter
       env: python
-      buildCommand: pip install --upgrade pip && pip install -r requirements-no-pymupdf.txt
+      buildCommand: pip install --upgrade pip && pip install -r requirements.txt
       startCommand: gunicorn --bind 0.0.0.0:$PORT app:app
       pythonVersion: "3.11.8"
       envVars:

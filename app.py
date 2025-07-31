@@ -3,7 +3,12 @@ import uuid
 from flask import Flask, request, render_template, jsonify, send_file, url_for
 from werkzeug.utils import secure_filename
 import pdf2docx
-import fitz  # PyMuPDF
+try:
+    import fitz  # PyMuPDF
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+    print("PyMuPDF not available - using basic PDF validation")
 from pathlib import Path
 import time
 import threading
@@ -29,15 +34,42 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def cleanup_old_files():
-    """Remove files older than 1 hour"""
+    """Remove files older than 5 minutes for development, immediate cleanup for production"""
     current_time = time.time()
+    # Use 5 minutes for development, immediate for production
+    cleanup_time = 300 if os.environ.get('FLASK_ENV') != 'production' else 60  # 5 minutes dev, 1 minute prod
+    
     for folder in [UPLOAD_FOLDER, OUTPUT_FOLDER]:
         for file_path in Path(folder).glob('*'):
-            if current_time - file_path.stat().st_mtime > 3600:  # 1 hour
+            if current_time - file_path.stat().st_mtime > cleanup_time:
                 try:
                     file_path.unlink()
+                    print(f"Cleaned up old file: {file_path}")
                 except:
                     pass
+
+def cleanup_job_files(job_id):
+    """Immediately clean up files for a specific job"""
+    try:
+        # Clean up upload file
+        upload_files = list(Path(UPLOAD_FOLDER).glob(f"{job_id}.*"))
+        for file_path in upload_files:
+            file_path.unlink()
+            print(f"Cleaned up upload file: {file_path}")
+        
+        # Clean up output file
+        output_files = list(Path(OUTPUT_FOLDER).glob(f"{job_id}.*"))
+        for file_path in output_files:
+            file_path.unlink()
+            print(f"Cleaned up output file: {file_path}")
+        
+        # Remove job status
+        if job_id in conversion_status:
+            del conversion_status[job_id]
+            print(f"Cleaned up job status: {job_id}")
+            
+    except Exception as e:
+        print(f"Error cleaning up job {job_id}: {e}")
 
 def convert_pdf_to_docx(pdf_path, output_path, job_id, output_filename):
     """Convert PDF to DOCX with error handling and detailed progress"""
@@ -56,14 +88,27 @@ def convert_pdf_to_docx(pdf_path, output_path, job_id, output_filename):
                 'message': 'Validating PDF file...'
             })
             
-            doc = fitz.open(pdf_path)
-            page_count = len(doc)
-            doc.close()
-            
-            conversion_status[job_id].update({
-                'progress': 20,
-                'message': f'PDF validated successfully. Found {page_count} pages.'
-            })
+            if PYMUPDF_AVAILABLE:
+                # Use PyMuPDF for detailed validation if available
+                doc = fitz.open(pdf_path)
+                page_count = len(doc)
+                doc.close()
+                
+                conversion_status[job_id].update({
+                    'progress': 20,
+                    'message': f'PDF validated successfully. Found {page_count} pages.'
+                })
+            else:
+                # Basic file validation without PyMuPDF
+                with open(pdf_path, 'rb') as f:
+                    header = f.read(8)
+                    if not header.startswith(b'%PDF-'):
+                        raise Exception("Not a valid PDF file")
+                
+                conversion_status[job_id].update({
+                    'progress': 20,
+                    'message': 'PDF validated successfully.'
+                })
             
         except Exception as e:
             conversion_status[job_id] = {
@@ -194,18 +239,52 @@ def download_file(job_id):
         # Get the original filename with pdf_ prefix
         output_filename = conversion_status[job_id].get('output_filename', 'pdf_converted_document.docx')
         
-        return send_file(
+        # Create a response with the file
+        response = send_file(
             output_path,
             as_attachment=True,
             download_name=output_filename,
             mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
+        
+        # Schedule immediate cleanup after download
+        def cleanup_after_download():
+            time.sleep(2)  # Wait 2 seconds to ensure download started
+            cleanup_job_files(job_id)
+        
+        cleanup_thread = threading.Thread(target=cleanup_after_download)
+        cleanup_thread.start()
+        
+        return response
+        
     except Exception as e:
         return jsonify({'error': f'Download failed: {str(e)}'}), 500
 
 @app.route('/health')
 def health_check():
     return jsonify({'status': 'healthy', 'timestamp': time.time()})
+
+@app.route('/cleanup', methods=['POST'])
+def manual_cleanup():
+    """Manual cleanup endpoint for immediate file removal"""
+    try:
+        # Clean up all old files
+        cleanup_old_files()
+        
+        # Count remaining files
+        upload_count = len(list(Path(UPLOAD_FOLDER).glob('*')))
+        output_count = len(list(Path(OUTPUT_FOLDER).glob('*')))
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Cleanup completed',
+            'remaining_files': {
+                'uploads': upload_count,
+                'outputs': output_count
+            }
+        })
+    except Exception as e:
+        return jsonify({'error': f'Cleanup failed: {str(e)}'}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

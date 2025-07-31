@@ -1,5 +1,13 @@
+# File upload and conversion directories - DO NOT COMMIT
 uploads/
+uploads/*
 outputs/
+outputs/*
+temp/
+temp/*
+*.pdf
+*.docx
+
 __pycache__/
 *.pyc
 *.pyo

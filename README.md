@@ -8,6 +8,7 @@ A simple and elegant web application that converts PDF files to Word (.docx) doc
 -   🔄 **Real-time Progress**: Live conversion progress with status updates
 -   📱 **Responsive Design**: Works on desktop, tablet, and mobile devices
 -   🛡️ **Secure Processing**: Files are automatically cleaned up after conversion
+-   🗑️ **No File Storage**: Uploaded and converted files are immediately deleted after download
 -   ⚡ **Fast Conversion**: Efficient PDF to Word conversion preserving formatting
 -   📄 **Multi-page Support**: Handles multi-page PDF documents
 -   ❌ **Error Handling**: Graceful error handling for invalid files
@@ -81,6 +82,27 @@ pdftoword/
 ├── uploads/           # Temporary upload directory (auto-created)
 └── outputs/           # Temporary output directory (auto-created)
 ```
+
+## File Management
+
+### Automatic Cleanup
+
+-   **Development**: Files are kept for 5 minutes then automatically deleted
+-   **Production**: Files are immediately deleted 2 seconds after download
+-   **Manual Cleanup**: Run `cleanup.bat` (Windows) to immediately remove all temporary files
+
+### Privacy & Security
+
+-   ✅ No files are permanently stored
+-   ✅ All uploads and outputs are automatically cleaned up
+-   ✅ Files are never committed to version control (`.gitignore` configured)
+-   ✅ Secure file processing with validation
+
+### Cleanup Endpoints
+
+-   `GET /cleanup` - Manual cleanup trigger (POST method)
+-   Files are stored temporarily in `uploads/` and `outputs/` directories
+-   Both directories are automatically created and managed
 
 ## Configuration
 
